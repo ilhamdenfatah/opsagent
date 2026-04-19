@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opsagent"
+version = "0.1.0"
+description = "AI Operations Co-Pilot — multi-agent system for business metrics monitoring"
+requires-python = ">=3.11"
+
+dependencies = [
+    # Agent orchestration
+    "langgraph>=0.2.0",
+    "langchain>=0.3.0",
+    "langchain-groq>=0.2.0",
+
+    # LLM APIs
+    "groq>=0.11.0",
+    "google-generativeai>=0.8.0",
+
+    # Vector database & embeddings
+    "qdrant-client>=1.11.0",
+    "sentence-transformers>=3.2.0",
+
+    # Data processing
+    "pandas>=2.2.0",
+    "numpy>=1.26.0",
+
+    # Structured output & validation
+    "pydantic>=2.9.0",
+
+    # Evaluation
+    "ragas>=0.2.0",
+
+    # Observability
+    "langfuse>=2.0.0",
+
+    # Frontend
+    "streamlit>=1.39.0",
+    "plotly>=5.24.0",
+
+    # API layer (for n8n integration)
+    "fastapi>=0.115.0",
+    "uvicorn>=0.31.0",
+
+    # Utilities
+    "python-dotenv>=1.0.0",
+    "httpx>=0.27.0",
+    "tenacity>=9.0.0",       # retry logic
+    "rich>=13.0.0",          # nice terminal output
+    "loguru>=0.7.0",         # structured logging
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.7.0",
+    "mypy>=1.12.0",
+    "ipykernel>=6.29.0",
+    "jupyter>=1.1.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

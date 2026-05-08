@@ -22,6 +22,7 @@ GOLDEN_TESTSET_DIR = DATA_DIR / "golden_testset"
 METRICS_FILE = RAW_DATA_DIR / "metrics_daily.csv"
 METRICS_CLEAN_FILE = RAW_DATA_DIR / "metrics_daily_clean.csv"
 GROUND_TRUTH_FILE = RAW_DATA_DIR / "anomaly_ground_truth.json"
+METRICS_DB_FILE = PROCESSED_DATA_DIR / "metrics.db"
 
 # --- API Keys (loaded from .env) ---
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")

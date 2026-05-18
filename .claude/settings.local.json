@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import sqlite3; conn = sqlite3.connect\\('data/processed/metrics.db'\\); cur = conn.cursor\\(\\); cur.execute\\(\\\\\"SELECT name FROM sqlite_master WHERE type='table'\\\\\"\\); tables = cur.fetchall\\(\\); print\\('Tables:', tables\\); cur.execute\\('PRAGMA table_info\\(metrics_daily\\)'\\); print\\('Columns:', cur.fetchall\\(\\)\\); conn.close\\(\\)\")",
+      "Bash(python -c ' *)"
+    ]
+  }
+}

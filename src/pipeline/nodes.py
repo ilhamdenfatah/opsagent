@@ -14,6 +14,10 @@ Each node will eventually be replaced by:
 
 from __future__ import annotations
 
+from src.agents.action_recommender import run_action_recommender
+from src.agents.report_generator import run_report_generator
+from src.agents.root_cause import run_root_cause_agent
+from src.agents.schemas import ActionPlan, RootCauseAnalysis
 from src.pipeline.state import AgentState
 
 
@@ -62,27 +66,26 @@ def signal_detector_node(state: AgentState) -> dict:
 
 def diagnose_node(state: AgentState) -> dict:
     """
-    Diagnose the root cause of the detected anomaly.
+    Run the Root Cause Analyzer ReAct agent and write structured output to state.
 
-    Real version (Day 10) will use tool-use: query the metrics database,
-    correlate with historical events, and let the LLM reason. For now,
-    this just returns a hardcoded narrative.
+    Reads anomaly_context populated by the signal detector (or test harness).
+    Writes root_cause (plain text, for downstream dummy nodes) and
+    root_cause_analysis (serialized RootCauseAnalysis, for Day 11+ agents).
     """
-    metrics = state.get("metrics", {})
-    revenue = metrics.get("revenue", 0)
-
-    # Hardcoded "diagnosis" — pretend the LLM figured this out.
-    cause = (
-        f"Revenue dropped to {revenue} (below threshold "
-        f"{REVENUE_ANOMALY_THRESHOLD}). Likely cause: a marketing "
-        f"campaign ended without a replacement, cutting traffic."
+    ctx = state.get("anomaly_context", {})
+    rca = run_root_cause_agent(
+        anomaly_date=ctx.get("date", ""),
+        anomaly_metric=ctx.get("metric", "daily_revenue"),
+        anomaly_severity=ctx.get("severity", "medium"),
     )
-
-    log_msg = f"[diagnose] root_cause identified"
-
     return {
-        "root_cause": cause,
-        "messages": [log_msg],
+        "root_cause": rca.primary_cause,
+        "root_cause_analysis": rca.model_dump(mode="json"),
+        "messages": [
+            f"[diagnose] confidence={rca.confidence:.2f}, "
+            f"severity={rca.severity_assessment}, "
+            f"steps={len(rca.investigation_trace)}"
+        ],
     }
 
 
@@ -92,21 +95,42 @@ def diagnose_node(state: AgentState) -> dict:
 
 def recommend_node(state: AgentState) -> dict:
     """
-    Recommend an action based on the diagnosed root cause.
+    Run the Action Recommender agent and write a prioritized ActionPlan to state.
 
-    Real version (Day 11) will use few-shot prompting + ranked output
-    with impact-vs-effort scoring. For now, hardcoded suggestion.
+    Reads root_cause_analysis (serialized RootCauseAnalysis dict) from state,
+    reconstructs the Pydantic model, then calls the recommender.
     """
-    cause = state.get("root_cause", "unknown cause")
-
-    action = (
-        "Launch a replacement marketing campaign within 48 hours. "
-        "Re-engage churned segments via email. Monitor revenue daily."
-    )
-
-    log_msg = f"[recommend] action proposed for cause: {cause[:50]}..."
-
+    rca = RootCauseAnalysis(**state.get("root_cause_analysis", {}))
+    plan = run_action_recommender(rca)
     return {
-        "recommended_action": action,
-        "messages": [log_msg],
+        "recommended_action": plan.actions[0].description,
+        "action_plan": plan.model_dump(mode="json"),
+        "messages": [
+            f"[recommend] {len(plan.actions)} actions, "
+            f"top: {plan.actions[0].title!r} (score={plan.actions[0].priority_score:.2f})"
+        ],
+    }
+
+
+# ---------------------------------------------------------------------
+# Node 4: Report Generator
+# ---------------------------------------------------------------------
+
+def report_node(state: AgentState) -> dict:
+    """
+    Generate a structured IncidentReport from all prior agent outputs.
+
+    Reads anomaly_context, root_cause_analysis, and action_plan from state.
+    report_markdown (assembled markdown) is included in the serialized dict.
+    """
+    ctx = state.get("anomaly_context", {})
+    rca = RootCauseAnalysis(**state.get("root_cause_analysis", {}))
+    plan = ActionPlan(**state.get("action_plan", {}))
+    report = run_report_generator(ctx, rca, plan)
+    return {
+        "report": report.model_dump(mode="json"),
+        "messages": [
+            f"[report] generated, severity={report.metadata.severity}, "
+            f"actions={report.metadata.action_count}"
+        ],
     }

@@ -17,7 +17,7 @@ circular imports and makes the data flow easy to read at a glance.
 from __future__ import annotations
 
 from typing import Literal
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
 
 # =====================================================================
@@ -236,3 +236,156 @@ class RootCauseAnalysis(BaseModel):
                 f"At confidence={confidence}, at least 1 counterfactual is required."
             )
         return v
+
+
+# =====================================================================
+# Action Recommender output
+# =====================================================================
+
+class ActionItem(BaseModel):
+    """
+    A single recommended action with priority scoring.
+
+    priority_score drives the ordering of actions in ActionPlan — higher
+    score means "do this sooner." The model_validator on ActionPlan
+    re-sorts items by this score so consumers always get them in order.
+    """
+
+    title: str = Field(..., description="Short name for the action, ~60 chars max")
+    description: str = Field(
+        ...,
+        min_length=30,
+        description="What exactly to do, 2-4 sentences. Specific enough to act on.",
+    )
+    owner: str = Field(
+        ...,
+        description="Team or role responsible, e.g. 'Marketing team', 'Engineering on-call'",
+    )
+    urgency: Literal["immediate", "within_24h", "within_week", "within_month"] = Field(
+        ...,
+        description="When to act: immediate = within the hour, within_24h = today, etc.",
+    )
+    impact: Literal["low", "medium", "high"] = Field(
+        ..., description="Expected business impact if this action is taken"
+    )
+    effort: Literal["low", "medium", "high"] = Field(
+        ..., description="Relative effort required to execute this action"
+    )
+    priority_score: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="0.0–1.0. 1.0 = highest priority. Derived from urgency × impact ÷ effort.",
+    )
+
+
+class ActionPlan(BaseModel):
+    """
+    The complete output of the Action Recommender agent.
+
+    actions is guaranteed to be sorted by priority_score descending
+    (model_validator handles this), so index 0 is always the top priority.
+    """
+
+    anomaly_summary: str = Field(
+        ...,
+        min_length=20,
+        description="1-2 sentence restatement of the anomaly being addressed",
+    )
+    root_cause_summary: str = Field(
+        ...,
+        min_length=20,
+        description="Brief restatement of the diagnosed root cause for context",
+    )
+    actions: list[ActionItem] = Field(
+        ...,
+        min_length=2,
+        description="Prioritized actions, at least 2 items. Sorted descending by priority_score.",
+    )
+    expected_outcome: str = Field(
+        ...,
+        min_length=20,
+        description="What success looks like if all actions are taken",
+    )
+
+    @model_validator(mode="after")
+    def sort_actions_by_priority(self) -> ActionPlan:
+        # Re-sort in case the LLM returned items in the wrong order.
+        # Silently corrects rather than adding a retry for a trivial ordering issue.
+        self.actions = sorted(self.actions, key=lambda a: a.priority_score, reverse=True)
+        return self
+
+
+# =====================================================================
+# Report Generator output
+# =====================================================================
+
+class ReportMetadata(BaseModel):
+    """Structured metadata attached to every IncidentReport."""
+
+    generated_at: str = Field(
+        ..., description="ISO datetime when the report was generated. Set by Python, not the LLM."
+    )
+    anomaly_date: str = Field(..., description="The date of the anomaly, YYYY-MM-DD")
+    anomaly_metric: str = Field(..., description="The primary metric that was anomalous")
+    severity: SeverityLevel = Field(..., description="Final severity after investigation")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="RCA confidence score")
+    action_count: int = Field(..., ge=1, description="Number of recommended actions")
+
+
+class IncidentReport(BaseModel):
+    """
+    The complete output of the Report Generator agent.
+
+    Four markdown-formatted sections for different audiences, plus metadata.
+    `report_markdown` is a computed field that joins all sections — it's
+    included in model_dump() so state["report"]["report_markdown"] works
+    without a separate assembly step.
+    """
+
+    executive_summary: str = Field(
+        ...,
+        min_length=30,
+        description=(
+            "2-3 sentences for a non-technical audience. "
+            "Cover: what happened, root cause in plain language, #1 action. "
+            "No metric names, no percentages."
+        ),
+    )
+    analysis: str = Field(
+        ...,
+        min_length=50,
+        description=(
+            "Markdown H2 section. Root cause, confidence, evidence bullet list, "
+            "related metrics, alternatives considered."
+        ),
+    )
+    recommendations: str = Field(
+        ...,
+        min_length=50,
+        description=(
+            "Markdown H2 section. All actions as a numbered list with owner, "
+            "urgency, and one-line description each."
+        ),
+    )
+    next_steps: str = Field(
+        ...,
+        min_length=30,
+        description=(
+            "Markdown H2 section. Immediate actions (within 24h) "
+            "and a suggested review date."
+        ),
+    )
+    metadata: ReportMetadata
+
+    @computed_field
+    @property
+    def report_markdown(self) -> str:
+        """Full assembled incident report as a single markdown document."""
+        return (
+            "# Incident Report\n\n"
+            f"{self.executive_summary}\n\n"
+            f"{self.analysis}\n\n"
+            f"{self.recommendations}\n\n"
+            f"{self.next_steps}"
+        )

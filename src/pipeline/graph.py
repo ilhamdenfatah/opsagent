@@ -1,13 +1,14 @@
 """
-LangGraph wiring for the OpsAgent pipeline (Day 9 — dummy nodes).
+LangGraph wiring for the OpsAgent pipeline (Day 12 — four real agents).
 
 This module:
 1. Builds the graph (state schema + nodes + edges).
 2. Compiles it into an invokable object.
 3. Provides a helper to export the graph as Mermaid for documentation.
 
-The structure here will stay roughly the same as we replace dummy nodes
-with real agents in later days. New agents = new nodes added to this graph.
+Pipeline flow:
+  START → signal_detector → (anomaly?) → diagnose → recommend → report → END
+                                       ↘ END (no anomaly)
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from src.pipeline.nodes import (
     signal_detector_node,
     diagnose_node,
     recommend_node,
+    report_node,
 )
 
 
@@ -66,6 +68,7 @@ def build_graph():
     graph.add_node("signal_detector", signal_detector_node)
     graph.add_node("diagnose", diagnose_node)
     graph.add_node("recommend", recommend_node)
+    graph.add_node("report", report_node)
 
     # 3. Wire the edges — the actual flow control.
     #
@@ -85,8 +88,11 @@ def build_graph():
     #    diagnose → recommend  (always)
     graph.add_edge("diagnose", "recommend")
 
-    #    recommend → END  (always)
-    graph.add_edge("recommend", END)
+    #    recommend → report  (always)
+    graph.add_edge("recommend", "report")
+
+    #    report → END  (always)
+    graph.add_edge("report", END)
 
     # 4. Compile. This validates the graph (no orphan nodes, valid edges,
     #    reachable END, etc.) and returns an invokable object.

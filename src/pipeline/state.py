@@ -38,13 +38,30 @@ class AgentState(TypedDict, total=False):
     anomaly_detected: bool
     """True when the Signal Detector flags an anomaly worth investigating."""
 
+    # --- Root Cause Analyzer input ---
+    anomaly_context: dict
+    """
+    Structured anomaly info from Signal Detector (or test harness):
+      {"date": "YYYY-MM-DD", "metric": "daily_revenue", "severity": "high", "description": "..."}
+    """
+
     # --- Root Cause Analyzer output ---
     root_cause: str
-    """Plain-text description of the diagnosed root cause."""
+    """Primary cause as plain text — kept for backward compat with downstream dummy nodes."""
+
+    root_cause_analysis: dict
+    """Serialized RootCauseAnalysis (model_dump mode='json'). Consumed by Action Recommender."""
 
     # --- Action Recommender output ---
     recommended_action: str
-    """Plain-text recommendation for what to do about the anomaly."""
+    """Top action as plain text — kept for trace log and backward compat."""
+
+    action_plan: dict
+    """Serialized ActionPlan (model_dump mode='json'). Consumed by Report Generator."""
+
+    # --- Report Generator output ---
+    report: dict
+    """Serialized IncidentReport (model_dump mode='json'). Includes report_markdown key."""
 
     # --- Trace / observability ---
     messages: Annotated[list[str], add]
